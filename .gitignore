@@ -1,0 +1,10 @@
+models/
+demo/
+*.pyc
+*.pdf
+*.mp4
+.mypy_cache/
+log/
+mtcnn_weights/
+*.png
+*.jpg
