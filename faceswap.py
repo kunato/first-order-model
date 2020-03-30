@@ -16,17 +16,16 @@ matplotlib.use('Agg')
 
 
 def load_checkpoints(config_path, checkpoint_path):
-    torch.zeros()
     with open(config_path) as f:
         config = yaml.load(f)
 
     generator = OcclusionAwareGenerator(**config['model_params']['generator_params'],
                                         **config['model_params']['common_params'])
-    # generator.cuda()
+    generator.cuda()
 
     kp_detector = KPDetector(**config['model_params']['kp_detector_params'],
                              **config['model_params']['common_params'])
-    # kp_detector.cuda()
+    kp_detector.cuda()
 
     checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'))
     generator.load_state_dict(checkpoint['generator'])
@@ -47,11 +46,10 @@ def make_animation(source_image, driving_video, generator, kp_detector, relative
     from face_detection.transformer.color_correction import adain
     # import keras.backend as K
     import face_alignment
-    os.environ['CUDA_VISIBLE_DEVICES'] = ''
     # K.set_learning_phase(0)
     # fd = MTCNNFaceDetector(sess=K.get_session())
     fa = face_alignment.FaceAlignment(
-        face_alignment.LandmarksType._2D, device='cpu', flip_input=True)
+        face_alignment.LandmarksType._2D, device='cuda', flip_input=True)
 
     def findCenter(img):
         th, threshed = cv2.threshold(
@@ -66,9 +64,9 @@ def make_animation(source_image, driving_video, generator, kp_detector, relative
     with torch.no_grad():
         predictions = []
         source = torch.tensor(source_image[np.newaxis].astype(
-            np.float32)).permute(0, 3, 1, 2)
+            np.float32)).permute(0, 3, 1, 2).cuda()
         driving = torch.tensor(np.array(driving_video)[np.newaxis].astype(
-            np.float32)).permute(0, 4, 1, 2, 3)
+            np.float32)).permute(0, 4, 1, 2, 3).cuda()
         kp_source = kp_detector(source)
         kp_driving_initial = kp_detector(driving[:, :, 0])
 
@@ -124,7 +122,7 @@ def make_animation(source_image, driving_video, generator, kp_detector, relative
             # cv2.imwrite('rgb_r.png', (r_rgb * 255).astype(np.uint8))
 
             mask = cv2.bitwise_and(mask, ori_mask)
-            cv2.imwrite('mask.png', (mask * 255).astype(np.uint8))
+            # cv2.imwrite('mask.png', (mask * 255).astype(np.uint8))
             # cv2.imwrite('driving_frame_np.png', (driving_frame_np * 255).astype(np.uint8))
 
             # r_rgb_crop = r_rgb[int(x0):int(x1),int(y0):int(y1),:]
@@ -167,7 +165,7 @@ def make_animation(source_image, driving_video, generator, kp_detector, relative
             mask = mask[:, :, None]
 
             result = r_rgb * mask + (1 - mask) * driving_frame_np
-            cv2.imwrite('result.png', (result * 255).astype(np.uint8))
+            # cv2.imwrite('result.png', (result * 255).astype(np.uint8))
             predictions.append(result)
 
     return predictions
@@ -207,7 +205,11 @@ if __name__ == "__main__":
                      for frame in driving_video]
     generator, kp_detector = load_checkpoints(
         config_path=opt.config, checkpoint_path=opt.checkpoint)
+    
+    source_image_name = opt.source_image.split('/')[-1].split('.')[-2]
+    driving_video_name = opt.driving_video.split('/')[-1].split('.')[-2]
+
 
     predictions = make_animation(source_image, driving_video, generator,
                                  kp_detector, relative=opt.relative, adapt_movement_scale=opt.adapt_scale)
-    imageio.mimsave(opt.result_video, predictions, fps=fps)
+    imageio.mimsave(f'{driving_video_name}_{source_image_name}.mp4', predictions, fps=fps)
